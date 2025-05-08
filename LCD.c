@@ -73,7 +73,7 @@ void LCD_data(unsigned char data)
 void LCD_write_string(static char *str)
 {
     int i = 0;
-    while (str[i] !=  \0)
+    while (str[i] != '\0')
     {
         LCD_data(str[i]);
         msdelay(15);

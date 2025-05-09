@@ -1,143 +1,106 @@
-#include <PIC18F4520.h>
-#pragma config OSC = HS
-#pragma config WDT = OFF
-#pragma config LVP = OFF
-#pragma config PBADEN = OFF
+/*
+ * File:   main.c
+ * Author: MicroEmbedded
+ *
+ * Created on October 15, 2016, 4:35 PM
+ */
 
-#define LCD_DATA PORTD
-#define en PORTEbits.RE2
-#define rw PORTEbits.RE1
-#define rs PORTEbits.RE0
+#include <pic18f4550.h>
+#include <stdio.h>
 
-void ADC_Init(void);
-unsigned int Get_ADC_Result(void);
-void Start_Conversion(void);
-void msdelay(unsigned int time);
-void init_LCD(void);
-void LCD_command(unsigned char cmd);
-void LCD_data(unsigned char data);
-void LCD_write_string(char *str);
+#define LCD_EN LATAbits.LA1
+#define LCD_RS LATAbits.LA0
+#define LCDPORT LATB
 
-void main()
-{
-    char msg1[] = "LM35 Interface";
-    char msg2[] = "Temp.:";
-    char msg3[] = {0xDF, 0x43, 0x00};
-    unsigned char temp = 0;
-    unsigned char i = 0, Thousands, Hundreds, Tens, Ones;
-    unsigned int adc_val;
-    unsigned char val, pot0[6];
-    ADCON1 = 0x0F; // Configuring the PORTE pins as digital I/O
-    TRISD = 0x00;  // Configuring PORTD as output
-    TRISE = 0x00;  // Configuring PORTE as output
+unsigned char str[16];
 
-    ADC_Init();             // Init ADC peripheral
-    init_LCD();             // Init LCD Module
-    LCD_write_string(msg1); // Display Welcome Message
-    LCD_command(0xC0);      // Goto second line, 0th place of LCD
-    LCD_write_string(msg2); // Display Message "Temp:"
-
-    while (1)
-    {
-        Start_Conversion();         // Trigger conversion
-        adc_val = Get_ADC_Result(); // Get the ADC output by polling GO bit
-        adc_val = adc_val / 2;      // Divide the value by 2 match with 10mv stepsize
-        LCD_command(0xC7);          // Goto 8th place on second line of LCD
-
-        val = (unsigned char)adc_val;
-        i = (val / 100);     // Get the Hundreds place
-        Hundreds = i + 0x30; // Convert it to ASCII
-        LCD_data(Hundreds);  // Display Hundreds place
-
-        i = (val % 100) / 10; // Get the Tens place
-        Tens = i + 0x30;      // Convert it to ASCII
-        LCD_data(Tens);       // Display Tens place
-
-        i = adc_val % 10;   // Get the Ones place
-        Ones = i + 30;      // Convert it to ASCII
-        LCD_data(i + 0x30); // Display Ones place
-
-        LCD_write_string(msg3);
-
-        msdelay(300); // Delay between conversions.
-    }
-}
-
-// Function Definitions
-void ADC_Init()
-{
-    ADCON0 = 0b00000100; // A/D Module is OFF and Channel 1 is selected
-    ADCON1 = 0b00001110; // Reference as VDD & VSS, AN0 set as analog pins
-    ADCON2 = 0b10001110; // Result is right Justified
-                         // Acquisition Time 2TAD
-                         // ADC Clk FOSC/64
-    ADCON0bits.ADON = 1; // Turn ON ADC module
-}
-
-void Start_Conversion()
-{
-    ADCON0bits.GO = 1;
-}
-
-// If you do not wish to use adc conversion interrupt you can use this
-// to do conversion manually. It assumes conversion format is right adjusted
-unsigned int Get_ADC_Result()
-{
-    unsigned int ADC_Result = 0;
-    while (ADCON0bits.GO)
-        ;
-    ADC_Result = ADRESL;
-    ADC_Result |= ((unsigned int)ADRESH) << 8;
-    return ADC_Result;
-}
-
-void msdelay(unsigned int time) // Function to generate delay
+void lcd_delay(unsigned int time)
 {
     unsigned int i, j;
+
     for (i = 0; i < time; i++)
-        for (j = 0; j < 275; j++)
-            ; // Calibrated for a 1 ms delay in MPLAB
-}
-
-void init_LCD(void) // Function to initialise the LCD
-{
-    LCD_command(0x38); // initialization of 16X2 LCD in 8bit mode
-    msdelay(15);
-    LCD_command(0x01); // clear LCD
-    msdelay(15);
-    LCD_command(0x0C); // cursor off
-    msdelay(15);
-    LCD_command(0x80); // go to first line and 0th position
-    msdelay(15);
-}
-
-void LCD_command(unsigned char cmd) // Function to pass command to the LCD
-{
-    LCD_DATA = cmd; // Send data on LCD data bus
-    rs = 0;         // RS = 0 since command to LCD
-    rw = 0;         // RW = 0 since writing to LCD
-    en = 1;         // Generate High to low pulse on EN
-    msdelay(15);
-    en = 0;
-}
-
-void LCD_data(unsigned char data) // Function to write data to the LCD
-{
-    LCD_DATA = data; // Send data on LCD data bus
-    rs = 1;          // RS = 1 since data to LCD
-    rw = 0;          // RW = 0 since writing to LCD
-    en = 1;          // Generate High to low pulse on EN
-    msdelay(15);
-    en = 0;
-}
-// Function to write string to LCD
-void LCD_write_string(char *str)
-{
-    int i = 0;
-    while (str[i] != 0)
     {
-        LCD_data(str[i]); // sending data on LCD byte by byte
-        msdelay(15);
-        i++;
+        for (j = 0; j < 100; j++)
+            ;
     }
+}
+
+void SendInstruction(unsigned char command)
+{
+    LCD_RS = 0; // RS low : Instruction
+    LCDPORT = command;
+    LCD_EN = 1; // EN High
+    lcd_delay(10);
+    LCD_EN = 0; // EN Low; command sampled at EN falling edge
+    lcd_delay(10);
+}
+
+void SendData(unsigned char lcddata)
+{
+    LCD_RS = 1; // RS HIGH : DATA
+    LCDPORT = lcddata;
+    LCD_EN = 1; // EN High
+    lcd_delay(10);
+    LCD_EN = 0; // EN Low; data sampled at EN falling edge
+    lcd_delay(10);
+}
+
+void InitLCD(void)
+{
+    ADCON1 = 0x0F;
+    TRISB = 0x00;      // set data port as output
+    TRISAbits.RA0 = 0; // RS pin
+    TRISAbits.RA1 = 0; // EN pin
+
+    SendInstruction(0x38); // 8 bit mode, 2 line,5x7 dots
+    SendInstruction(0x06); // entry mode
+    SendInstruction(0x0C); // Display ON cursor OFF
+    SendInstruction(0x01); // Clear display
+    SendInstruction(0x80); // set address to 0
+}
+
+void LCD_display(unsigned int row, unsigned int pos, unsigned char *ch)
+{
+    if (row == 1)
+        SendInstruction(0x80 | (pos - 1));
+    else
+        SendInstruction(0xC0 | (pos - 1));
+
+    while (*ch)
+        SendData(*ch++);
+}
+
+void ADCInit(void)
+{
+    TRISEbits.RE2 = 1; // ADC channel 7 input
+
+    ADCON1 = 0b00000111; // Ref voltages Vdd & Vss; AN0 - AN7 channels Analog
+    ADCON2 = 0b10101110; // Right justified; Acquisition time 4T; Conversion clock Fosc/64
+}
+
+unsigned short Read_Temp(void)
+{
+    ADCON0 = 0b00011101; // ADC on; Select channel;
+    GODONE = 1;          // Start Conversion
+
+    while (GO_DONE == 1)
+        ;         // Wait till A/D conversion is complete
+    return ADRES; // Return ADC result
+}
+
+int main(void)
+{
+    unsigned int temp;
+    InitLCD();
+    ADCInit();
+    LCD_display(1, 1, "Temperature:");
+    while (1)
+    {
+        temp = Read_Temp();
+        temp = ((temp * 500) / 1023);
+        sprintf(str, "%d'C  ", temp);
+        LCD_display(2, 1, str);
+        lcd_delay(9000);
+    }
+    return 0;
 }

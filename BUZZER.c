@@ -1,40 +1,39 @@
-#include <PIC18F4520.h>
-#pragma config OSC = HS
-#pragma config WDT = OFF
-#pragma config LVP = OFF
-#pragma config PBADEN = OFF
-void msdelay(unsigned int time);
-void main()
+#include <xc.h>
+
+#define Buzzer LATAbits.LATA5   // Define buzzer pin
+unsigned int count = 0;
+
+void __interrupt() Timer1_ISR()
 {
-    INTCON2bits.RBPU = 0;
-    ADCON1 = 0x0F;
-
-    TRISA = 0x00;
-    TRISB = 0x00;
-    TRISC = 0x00;
-    TRISD = 0x00;
-    TRISE = 0x00;
-    while (1)
+    if (TMR1IF && TMR1IE)
     {
-        PORTA = 0xAA;
-        PORTB = 0xAA;
-        PORTC = 0xAA;
-        PORTD = 0xAA;
-        PORTE = 0xAA;
+        TMR1L = 0x20;
+        TMR1H = 0xD1;
+        count++;
 
-        msdelay(200);
-        PORTA = 0x55;
-        PORTB = 0x55;
-        PORTC = 0x55;
-        PORTD = 0x55;
-        PORTE = 0x55;
-        msdelay(200);
+        if (count >= 1000) // 1 second
+        {
+            Buzzer = ~Buzzer;   // Toggle buzzer
+            count = 0;
+        }
+        TMR1IF = 0; // Clear interrupt flag
     }
 }
-void msdelay(unsigned int time)
+
+void main()
 {
-    unsigned int i, j;
-    for (i = 0; i < time; i++)
-        for (j = 0; j < 710; j++)
-            ;
+    TRISB = 0x00;                // Port B as output
+    TRISAbits.TRISA5 = 0;        // RA5 as output
+    LATAbits.LATA5 = 0;          // Initially off
+
+    T1CON = 0x31;                // 1:8 prescale, internal clock, Timer1 ON
+    TMR1L = 0x20;
+    TMR1H = 0xD1;
+
+    TMR1IE = 1;                  // Enable Timer1 interrupt
+    TMR1IF = 0;                  // Clear interrupt flag
+    PEIE = 1;                    // Enable peripheral interrupt
+    GIE = 1;                     // Enable global interrupt
+
+    while (1);
 }
